@@ -1,8 +1,11 @@
 {
   "name": "schema.io",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "main": "./lib/index.js",
-  "typings": "./lib/index.d.ts",
+  "typings": [
+    "./lib/index.d.ts",
+    "./lib/type.d.ts"
+  ],
   "private": false,
   "license": "MIT",
   "author": "Misery Lee <miserylee@foxmail.com>",
