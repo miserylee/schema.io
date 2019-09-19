@@ -1,4 +1,5 @@
-import * as assert from 'assert';
+import Erz from 'erz';
+import $, { Type } from './type';
 
 const isPureObject = (v: any) => v !== null
   && typeof v === 'object'
@@ -28,10 +29,30 @@ export interface IParsedSchema {
     match?: RegExp;
     invalid?: any[];
     enums?: any[];
+    explain?: string;
+    error?: string;
+    disallowEmpty?: boolean;
   };
 }
 
-const parse = (schema: any, extra: {
+export interface ISummary {
+  type: string;
+  required: boolean;
+  default?: any;
+  enums?: any[];
+  invalid?: any[];
+  match?: string;
+  min?: number;
+  max?: number;
+  element?: ISummary;
+  alter?: ISummary[];
+  object?: {
+    [key: string]: ISummary;
+  };
+  explain?: string;
+}
+
+const parse = (schema: any | Type, extra: {
   default?: any;
   required?: boolean;
   min?: number;
@@ -39,7 +60,13 @@ const parse = (schema: any, extra: {
   match?: RegExp;
   invalid?: any[];
   enums?: any[];
+  explain?: string;
+  error?: string;
+  disallowEmpty?: boolean;
 } = {}): IParsedSchema => {
+  if (schema instanceof Type) {
+    schema = schema.schema;
+  }
   let s: IParsedSchema = {};
   if (typeof schema === 'undefined') {
     s = {};
@@ -50,6 +77,9 @@ const parse = (schema: any, extra: {
     s = {
       type: 'string', name: 'String',
       transformer: (v: string | Buffer) => {
+        if (v.length === 0 && extra.disallowEmpty) {
+          return undefined;
+        }
         if (Buffer.isBuffer(v)) {
           return v.toString();
         }
@@ -57,9 +87,31 @@ const parse = (schema: any, extra: {
       },
     };
   } else if (schema === Number) {
-    s = { type: 'number', name: 'Number' };
+    s = {
+      type: 'number', name: 'Number',
+      transformer: (v: string | number) => {
+        if (typeof v === 'number') {
+          return v;
+        }
+        return parseFloat(v);
+      },
+    };
   } else if (schema === Boolean) {
-    s = { type: 'boolean', name: 'Boolean' };
+    s = {
+      type: 'boolean', name: 'Boolean',
+      transformer(v: boolean | string | number) {
+        if (typeof v === 'boolean') {
+          return v;
+        }
+        if (['1', 1, 'true', 'T'].includes(v)) {
+          return true;
+        }
+        if (['0', 0, 'false', 'F'].includes(v)) {
+          return false;
+        }
+        return v;
+      },
+    };
   } else if (schema === Date) {
     s = {
       type: 'object', name: 'Date', date: true,
@@ -71,10 +123,34 @@ const parse = (schema: any, extra: {
       },
     };
   } else if (schema === Array) {
-    s = { type: 'object', name: 'Array', array: true };
+    s = {
+      type: 'object', name: 'Array', array: true,
+      transformer(v: any[] | string) {
+        if (Array.isArray(v)) {
+          return v;
+        }
+        try {
+          return JSON.parse(v);
+        } catch (e) {
+          return v;
+        }
+      },
+    };
   } else if (Array.isArray(schema)) {
     if (schema.length <= 1) {
-      s = { type: 'object', name: 'Array', array: true };
+      s = {
+        type: 'object', name: 'Array', array: true,
+        transformer(v: any[] | string) {
+          if (Array.isArray(v)) {
+            return v;
+          }
+          try {
+            return JSON.parse(v);
+          } catch (e) {
+            return v;
+          }
+        },
+      };
       if (schema[0]) {
         s.element = parse(schema[0]);
       }
@@ -88,17 +164,39 @@ const parse = (schema: any, extra: {
   } else if (schema === Object) {
     s = {
       type: 'object', name: 'Object', object: true, children: [],
-      transformer: (v: object) => JSON.parse(JSON.stringify(v)),
+      transformer: (v: object | string) => {
+        if (typeof v === 'string') {
+          try {
+            return JSON.parse(v);
+          } catch (e) {
+            return v;
+          }
+        }
+        return JSON.parse(JSON.stringify(v));
+      },
     };
   } else if (isPureObject(schema)) {
-    if ('type' in schema && !('type' in schema.type)) {
+    if ('$type' in schema) {
+      const copy = Object.assign({}, schema);
+      Reflect.deleteProperty(copy, '$type');
+      return parse(schema.$type, copy);
+    } else if ('type' in schema && !('type' in schema.type) && !(schema.type instanceof Type)) {
       const copy = Object.assign({}, schema);
       Reflect.deleteProperty(copy, 'type');
       return parse(schema.type, copy);
     } else {
       s = {
         type: 'object', name: 'Object', object: true,
-        transformer: (v: object) => JSON.parse(JSON.stringify(v)),
+        transformer: (v: object | string) => {
+          if (typeof v === 'string') {
+            try {
+              return JSON.parse(v);
+            } catch (e) {
+              return v;
+            }
+          }
+          return JSON.parse(JSON.stringify(v));
+        },
         children: Object.keys(schema).map(key => {
           return {
             key,
@@ -117,21 +215,20 @@ const parse = (schema: any, extra: {
 export default class Schema {
   private _schema: IParsedSchema;
 
-  constructor(schema?: any) {
+  constructor(schema?: any | Type) {
     this._schema = parse(schema);
   }
 
   public validate(value?: any): any {
-    const newValue = this._validate(this._schema, value);
-    if (isPureObject(newValue)) {
-      return JSON.parse(JSON.stringify(newValue));
-    } else {
-      return newValue;
-    }
+    return this._validate(this._schema, value);
   }
 
   public example() {
     return this._example(this._schema);
+  }
+
+  public summary() {
+    return JSON.parse(JSON.stringify(this._summary(this._schema)));
   }
 
   private _validate(schema: IParsedSchema, value?: any, key: string | number = 'v'): any {
@@ -142,7 +239,9 @@ export default class Schema {
         }
       }
       if (typeof value === 'undefined') {
-        assert(schema.extra!.required === false, 'is required');
+        if (schema.extra!.required !== false) {
+          throw new Erz('is required', -1);
+        }
         return;
       }
       if (!schema.object && !schema.array) {
@@ -154,51 +253,83 @@ export default class Schema {
         value = schema.transformer!(value);
       }
       if ('type' in schema) {
-        assert(typeof value === schema.type);
+        if (typeof value !== schema.type) {
+          throw new Erz('');
+        }
       }
       if ('value' in schema) {
-        assert(schema.value === value);
+        if (schema.value !== value) {
+          throw new Erz('');
+        }
       }
       if (schema.type === 'number') {
+        if (Number.isNaN(value)) {
+          throw new Erz('is not a number', -1);
+        }
         if ('min' in schema.extra!) {
-          assert((value!) >= schema.extra!.min!, `should ≥ ${schema.extra!.min!}`);
+          if ((value!) < schema.extra!.min!) {
+            throw new Erz(`should ≥ ${schema.extra!.min!}`, -1);
+          }
         }
         if ('max' in schema.extra!) {
-          assert((value!) <= schema.extra!.max!, `should ≤ ${schema.extra!.max!}`);
+          if ((value!) > schema.extra!.max!) {
+            throw new Erz(`should ≤ ${schema.extra!.max!}`, -1);
+          }
         }
       }
       if ('match' in schema.extra!) {
-        assert(schema.extra!.match!.test(value as string), `not match ${schema.extra!.match}`);
+        if (!schema.extra!.match!.test(value as string)) {
+          throw new Erz(`not match ${schema.extra!.match}`, -1);
+        }
       }
       if ('invalid' in schema.extra!) {
-        assert(!schema.extra!.invalid!.includes(value), `should not in [${schema.extra!.invalid}]`);
+        if (schema.extra!.invalid!.includes(value)) {
+          throw new Erz(`should not in [${schema.extra!.invalid}]`, -1);
+        }
       }
       if ('enums' in schema.extra!) {
-        assert(schema.extra!.enums!.includes(value), `is not in [${schema.extra!.enums}]`);
+        if (!schema.extra!.enums!.includes(value)) {
+          throw new Erz(`is not in ${JSON.stringify(schema.extra!.enums)}`, -1);
+        }
       }
       if (schema.date) {
-        assert(value instanceof Date);
+        if (!(value instanceof Date)) {
+          throw new Erz('');
+        }
       }
       if (schema.array) {
-        assert(Array.isArray(value));
+        if (!Array.isArray(value)) {
+          throw new Erz('');
+        }
       }
       if (schema.multiple) {
-        assert(schema.schemas!.some(s => {
+        if (!schema.schemas!.some(s => {
           try {
             this._validate(s, value);
             return true;
           } catch (err) {
             return false;
           }
-        }));
+        })) {
+          throw new Erz('');
+        }
       }
       if (schema.object) {
-        assert(isPureObject(value));
+        if (!isPureObject(value)) {
+          throw new Erz('');
+        }
       }
       if ('children' in schema) {
-        schema.children!.forEach(child =>
-          (value as { [key: string]: any })[child.key] =
-            this._validate(child.schema, (value as { [key: string]: any })[child.key], child.key));
+        if (schema.children!.length > 0) {
+          const obj: { [key: string]: any } = {};
+          schema.children!.forEach(child => {
+            const v = this._validate(child.schema, (value as { [key: string]: any })[child.key], child.key);
+            if (v !== undefined) {
+              obj[child.key] = v;
+            }
+          });
+          value = obj;
+        }
       }
       if ('element' in schema) {
         (value as any[]).forEach((v, index) =>
@@ -208,32 +339,47 @@ export default class Schema {
     } catch (error) {
       const newError: {
         originalMessage: string;
-        isAssertionError?: boolean;
+        isCustomError?: boolean;
         routes?: Array<string | number>;
         message?: string;
         name?: string;
       } = {
         originalMessage: error.originalMessage,
+        isCustomError: error.isCustomError,
       };
-      if (error.name === 'AssertionError [ERR_ASSERTION]' || error.isAssertionError) {
-        if (error.message === 'false == true') {
-          newError.originalMessage = `not match [${schema.name}]`;
-        } else {
-          newError.isAssertionError = true;
-          newError.originalMessage = error.originalMessage || error.message;
-        }
-      } else if (error.name !== 'ValidationError') {
-        newError.originalMessage = `not match [${schema.name}]`;
-      }
+
       newError.routes = error.routes || [];
       newError.routes!.unshift(key);
-      let vstr = value as string;
-      try {
-        vstr = JSON.stringify(value).slice(0, 100);
-      } catch (err) {
-        // noop.
+
+      if (error.name !== 'ValidationError') {
+        const customError = schema.extra!.error;
+        if (customError) {
+          newError.originalMessage = customError;
+          newError.message = customError;
+          newError.isCustomError = true;
+        } else if (error.name === Erz) {
+          if (error.code === -1) {
+            newError.originalMessage = `not match [${schema.name}]`;
+          } else {
+            newError.originalMessage = error.message;
+          }
+        } else {
+          newError.originalMessage = `not match [${schema.name}]`;
+        }
       }
-      newError.message = `${newError.routes!.join('.')} ${newError.originalMessage}. v is ${vstr} ...`;
+
+      if (!newError.isCustomError) {
+        let vstr = value as string;
+        try {
+          vstr = JSON.stringify(value);
+        } catch (err) {
+          // noop.
+        }
+        newError.message = `${newError.routes!.join('.')} ${newError.originalMessage}. v is ${vstr}`;
+      } else {
+        newError.message = newError.originalMessage;
+      }
+
       newError.name = 'ValidationError';
 
       const err = new Error(newError.message);
@@ -241,6 +387,44 @@ export default class Schema {
 
       throw err;
     }
+  }
+
+  private _summary(schema: IParsedSchema): any {
+    const su: ISummary = {
+      type: String(schema.name),
+      required: schema.extra!.required !== false,
+      explain: schema.extra!.explain,
+    };
+    if ('default' in schema.extra!) {
+      su.default = schema.extra!.default;
+    }
+    if ('enums' in schema.extra! && schema.extra!.enums!.length > 0) {
+      su.enums = schema.extra!.enums;
+    }
+    if ('invalid' in schema.extra! && schema.extra!.invalid!.length > 0) {
+      su.invalid = schema.extra!.invalid;
+    }
+    if (schema.name === 'String' && 'match' in schema.extra!) {
+      su.match = String(schema.extra!.match);
+    }
+    if (schema.name === 'Number') {
+      su.max = schema.extra!.max;
+      su.min = schema.extra!.min;
+    }
+    if (schema.name === 'Array' && 'element' in schema) {
+      su.element = this._summary(schema.element!);
+    }
+    if (schema.multiple) {
+      su.type = 'Alter';
+      su.alter = schema.schemas!.map(this._summary.bind(this));
+    }
+    if (schema.name === 'Object') {
+      su.object = schema.children!.reduce((memo, child) => {
+        memo[child.key] = this._summary(child.schema);
+        return memo;
+      }, {} as { [key: string]: ISummary });
+    }
+    return su;
   }
 
   private _example(schema: IParsedSchema): any {
@@ -295,3 +479,21 @@ export default class Schema {
   }
 
 }
+
+export const RequiredString = $(String).required();
+
+export const RequiredNumber = $(Number).required();
+
+export const RequiredDate = $(Date).required();
+
+export const RequiredBoolean = $(Boolean).required();
+
+export const OptionalString = $(String).optional();
+
+export const OptionalNumber = $(Number).optional();
+
+export const OptionalDate = $(Date).optional();
+
+export const OptionalBoolean = $(Boolean).optional();
+
+export { $, Type };

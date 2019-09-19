@@ -135,6 +135,11 @@ diff@^3.1.0, diff@^3.2.0:
   version "3.4.0"
   resolved "https://registry.npmjs.org/diff/-/diff-3.4.0.tgz#b1d85507daf3964828de54b37d0d73ba67dda56c"
 
+erz@^0.0.5:
+  version "0.0.5"
+  resolved "https://registry.yarnpkg.com/erz/-/erz-0.0.5.tgz#58641ccc1d96b37665790fadd2562877187571a7"
+  integrity sha512-rPoHtjZPE4qujYHohUHwLh3didMEyYqlu8zTnnxKzjCFfmVDZYqdkAYUXujW8WL4rI4MY2nOb/Cm7wBTNmxJcg==
+
 escape-string-regexp@1.0.5, escape-string-regexp@^1.0.2, escape-string-regexp@^1.0.5:
   version "1.0.5"
   resolved "https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-1.0.5.tgz#1b61c0562190a8dff6ae3bb2cf0200ca130b86d4"
