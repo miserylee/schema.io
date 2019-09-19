@@ -1,6 +1,6 @@
 {
   "name": "schema.io",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "main": "./lib/index.js",
   "typings": "./lib/index.d.ts",
   "private": false,
@@ -27,5 +27,8 @@
     "tslint": "5.9.1",
     "tslint-clean-code": "0.2.5",
     "typescript": "2.7.2"
+  },
+  "dependencies": {
+    "erz": "^0.0.5"
   }
 }
