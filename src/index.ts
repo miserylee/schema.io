@@ -80,7 +80,7 @@ const parse = (schema: any | Type, extra: {
         if (v.length === 0 && extra.disallowEmpty) {
           return undefined;
         }
-        if (Buffer.isBuffer(v)) {
+        if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) {
           return v.toString();
         }
         return v;

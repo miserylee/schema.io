@@ -15,13 +15,14 @@ export class Type {
   };
 
   constructor(T: any) {
-    this.schema = {
-      $type: T,
-      type: T,
-      required: true,
-    };
     if (T instanceof Type) {
-      this.schema.$type = T.schema;
+      this.schema = { ...T.schema };
+    } else {
+      this.schema = {
+        $type: T,
+        type: T,
+        required: true,
+      };
     }
   }
 

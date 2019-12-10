@@ -137,6 +137,18 @@ describe('Schema validation', () => {
       '_id': '1703110248001',
       'path': { 'type': 'Polygon', 'coordinates': [[[114.338735, 30.474982], [114.340179, 3]]] },
     });
+
+    console.log(new Schema({
+      roid: $(String).required(),
+      rent: $(Number).required(),
+      points: $(Number).required(),
+      period: $(Number).required(),
+      paidAmount: $(Number).required(),
+      type: $(Number).required(),
+    }).validate({
+      'roid': '190919103119870038',
+      'rent': '0', 'points': '1', 'period': '7', 'paidAmount': '2', 'type': '0',
+    }));
   });
 });
 
