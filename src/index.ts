@@ -227,7 +227,7 @@ export default class Schema {
     return this._example(this._schema);
   }
 
-  public summary() {
+  public summary(): ISummary {
     return JSON.parse(JSON.stringify(this._summary(this._schema)));
   }
 
@@ -389,7 +389,7 @@ export default class Schema {
     }
   }
 
-  private _summary(schema: IParsedSchema): any {
+  private _summary(schema: IParsedSchema): ISummary {
     const su: ISummary = {
       type: String(schema.name),
       required: schema.extra!.required !== false,
