@@ -231,7 +231,7 @@ export default class Schema {
     return JSON.parse(JSON.stringify(this._summary(this._schema)));
   }
 
-  private _validate(schema: IParsedSchema, value?: any, key: string | number = 'v'): any {
+  private _validate(schema: IParsedSchema, value?: any, key: string | number = '<value>'): any {
     try {
       if (typeof value === 'undefined') {
         if ('default' in schema.extra!) {
@@ -375,7 +375,7 @@ export default class Schema {
         } catch (err) {
           // noop.
         }
-        newError.message = `${newError.routes!.join('.')} ${newError.originalMessage}. v is ${vstr}`;
+        newError.message = `${newError.routes!.join('.')} ${newError.originalMessage}.${process.env.NODE_ENV !== 'production' ? ` <value> is: \n${vstr}` : ''}`;
       } else {
         newError.message = newError.originalMessage;
       }
