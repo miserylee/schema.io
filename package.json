@@ -1,12 +1,21 @@
 {
   "name": "schema.io",
-  "version": "0.6.8",
+  "version": "0.6.9",
   "main": "./lib/index.js",
   "typings": "./lib/index.d.ts",
   "private": false,
   "license": "MIT",
   "author": "Misery Lee <miserylee@foxmail.com>",
-  "description": "",
+  "description": "schema.io是一个js基本数据结构的校验库",
+  "keywords": [
+    "js",
+    "schema",
+    "validation",
+    "validator"
+  ],
+  "repository": {
+    "url": "https://github.com/miserylee/schema.io"
+  },
   "scripts": {
     "build": "rm -rf ./lib && tsc",
     "prebuild": "yarn run lint && yarn test",
